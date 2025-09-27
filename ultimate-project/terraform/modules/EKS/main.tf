@@ -24,9 +24,9 @@ resource "aws_eks_node_group" "main" {
   capacity_type  = each.value.capacity_type
 
   scaling_config {
-    desired_size = each.value.scaling_config.desired_size
-    max_size     = each.value.scaling_config.max_size
-    min_size     = each.value.scaling_config.min_size
+    desired_size = each.value.desired_size
+    max_size     = each.value.max_size
+    min_size     = each.value.min_size
   }
 
   depends_on = [
@@ -78,4 +78,5 @@ resource "aws_iam_role_policy_attachment" "node_policy" {
   policy_arn = each.value
   role       = aws_iam_role.node.name
 }
+
 
