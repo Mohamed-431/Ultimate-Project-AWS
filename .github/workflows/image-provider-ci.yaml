@@ -1,0 +1,97 @@
+name: image-provider-ci
+
+on:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y build-essential cmake
+
+      - name: Build and Test
+        run: |
+          cd src/image-provider
+          mkdir -p build
+          cd build
+          cmake ..
+          make
+          ctest --output-on-failure
+
+  codequality:
+    runs-on: ubuntu-latest
+
+    needs: build
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v2
+        with:
+          languages: cpp
+
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v2
+
+      - name: Code Quality Analysis
+        uses: github/codeql-action/analyze@v2
+        with:
+          category: "/language:cpp"
+
+  docker:
+    runs-on: ubuntu-latest
+
+    needs: build
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Docker
+        uses: docker/setup-buildx-action@v1
+
+      - name: Login to Docker
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_TOKEN }}
+
+      - name: Docker Push
+        uses: docker/build-push-action@v6
+        with:
+          context: src/image-provider
+          file: src/image-provider/Dockerfile
+          push: true
+          tags: ${{ secrets.DOCKER_USERNAME }}/image-provider:${{github.run_id}}
+
+  updatek8s:
+    runs-on: ubuntu-latest
+
+    needs: docker
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Update tag in kubernetes deployment manifest
+        run: |
+          sed -i "s|image: .*|image: ${{ secrets.DOCKER_USERNAME }}/image-provider:${{github.run_id}}|" kubernetes/image-provider/deployment.yaml
+
+      - name: Commit and push changes
+        run: |
+          git config --global user.email "mohamed.o431@outlook.com"
+          git config --global user.name "Mohamed O"
+          git add kubernetes/image-provider/deployment.yaml
+          git commit -m "[CI]: Update image-provider image tag"
+          git push origin HEAD:main -f
